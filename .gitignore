@@ -1,0 +1,7 @@
+.vscode/
+__pycache__/
+output/
+prior_L.pth
+*.png
+.cog/
+prior_L_fp16.pth

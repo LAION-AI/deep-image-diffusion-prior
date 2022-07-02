@@ -1,0 +1,46 @@
+# Configuration for Cog ⚙️
+# Reference: https://github.com/replicate/cog/blob/main/docs/yaml.md
+image: "r8.im/laion-ai/deep-image-diffusion-prior"
+build:
+  # set to true if your model requires a GPU
+  gpu: true
+  cuda: "11.3"
+
+  # a list of ubuntu apt packages to install
+  # system_packages:
+    # - "libgl1-mesa-glx"
+    # - "libglib2.0-0"
+
+  # python version in the form '3.8' or '3.8.12'
+  python_version: "3.8"
+
+  # a list of packages in the format <package-name>==<version>
+  python_packages:
+    - certifi==2022.6.15
+    - charset-normalizer==2.1.0
+    - einops==0.4.1
+    - idna==3.3
+    - madgrad==1.2
+    - numpy==1.23.0
+    - Pillow==9.2.0
+    - requests==2.28.1
+    - torch==1.10.1
+    - torchvision==0.11.2
+    - typing_extensions==4.3.0
+    - urllib3==1.26.9
+  
+  # commands run after the environment is setup
+  run:
+    - mkdir -p /root/.cache/clip && wget -c --output-document "/root/.cache/clip/ViT-L-14.pt" "https://openaipublic.azureedge.net/clip/models/b8cca3fd41ae0c99ba7e8951adf17d267cdb84cd88be6f7c2e0eca1737a03836/ViT-L-14.pt"
+    - pip install 'git+https://github.com/openai/glide-text2im'
+    - pip install 'git+https://github.com/nousr/DALLE2-pytorch.git'
+    - pip install git+https://github.com/nousr/deep-image-prior.git
+    # - git clone https://github.com/nousr/DALLE2-pytorch.git; cd DALLE2-pytorch; pip install .; cd .. # use the latest repo for ViT-L finetune
+    # - git clone https://github.com/nousr/DALLE2-pytorch.git; cd DALLE2-pytorch; git checkout checkpoints; pip install .; cd .. # for vit-b/32
+    - pip install madgrad
+    - pip install einops
+    - wget 'https://huggingface.co/zenglishuci/conditioned-prior/resolve/main/vit-b-32/ema641.pth' -O prior_B.pth
+    - wget 'https://huggingface.co/zenglishuci/conditioned-prior/resolve/main/vit-l-14/prior_aes_finetune.pth' -O prior_L.pth # un-comment for larger model! (should fit in normie colab)
+
+# predict.py defines how predictions are run on your model
+predict: "predict.py:Predictor"
