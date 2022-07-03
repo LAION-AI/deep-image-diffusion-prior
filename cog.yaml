@@ -4,7 +4,6 @@ image: "r8.im/laion-ai/deep-image-diffusion-prior"
 build:
   # set to true if your model requires a GPU
   gpu: true
-  cuda: "11.3"
 
   # a list of ubuntu apt packages to install
   # system_packages:
@@ -33,14 +32,9 @@ build:
   run:
     - mkdir -p /root/.cache/clip && wget -c --output-document "/root/.cache/clip/ViT-L-14.pt" "https://openaipublic.azureedge.net/clip/models/b8cca3fd41ae0c99ba7e8951adf17d267cdb84cd88be6f7c2e0eca1737a03836/ViT-L-14.pt"
     - pip install 'git+https://github.com/openai/glide-text2im'
-    - pip install 'git+https://github.com/nousr/DALLE2-pytorch.git'
-    - pip install git+https://github.com/nousr/deep-image-prior.git
-    # - git clone https://github.com/nousr/DALLE2-pytorch.git; cd DALLE2-pytorch; pip install .; cd .. # use the latest repo for ViT-L finetune
-    # - git clone https://github.com/nousr/DALLE2-pytorch.git; cd DALLE2-pytorch; git checkout checkpoints; pip install .; cd .. # for vit-b/32
-    - pip install madgrad
-    - pip install einops
-    - wget 'https://huggingface.co/zenglishuci/conditioned-prior/resolve/main/vit-b-32/ema641.pth' -O prior_B.pth
-    - wget 'https://huggingface.co/zenglishuci/conditioned-prior/resolve/main/vit-l-14/prior_aes_finetune.pth' -O prior_L.pth # un-comment for larger model! (should fit in normie colab)
+    - pip install 'git+https://github.com/Veldrovive/DALLE2-pytorch@f4b687798d367fc434d8127ab31141f0fea0db26'
+    - pip install 'git+https://github.com/nousr/deep-image-prior.git'
+    # - pip install 'git+https://github.com/nousr/DALLE2-pytorch.git'
 
 # predict.py defines how predictions are run on your model
 predict: "predict.py:Predictor"

@@ -1,9 +1,10 @@
 # Prediction interface for Cog ⚙️
 # https://github.com/replicate/cog/blob/main/docs/python.md
 
-from typing import List
+from typing import Iterator, List
 import os
 from deep_image_diffusion_prior import predict
+import clip
 
 import torch
 from deep_image_prior.models import *
@@ -55,18 +56,37 @@ def load_prior(model_path):
     diffusion_prior.to(DEVICE)
     return diffusion_prior
 
+
 class Predictor(BasePredictor):
+    @torch.cuda.amp.autocast()
     def setup(self):
         """Load the model into memory to make running multiple predictions efficient"""
-        # prior_model_path = "prior_L.pth" if CLIP_CHOICE == "ViT-L/14" else "prior_B.pth"
         prior_model_path = "prior_L_fp16.pth"
-        # self.prior = ( load_diffusion_model(dprior_path=prior_model_path, clip_choice=CLIP_CHOICE) .to(DEVICE) .eval() .requires_grad_(False))
         self.prior = load_prior(prior_model_path).to(DEVICE).eval().requires_grad_(False)
         print("loaded model!")
         self.clip_model = self.prior.clip.clip
         self.clip_size = self.clip_model.visual.input_resolution
 
+        self.prior_embed_cache = {} 
+
+    @torch.cuda.amp.autocast()
+    def encode_and_cache_prior_embed(self, prompt: str, num_samples_per_batch: int, cond_scale: float) -> torch.Tensor:
+        if prompt in self.prior_embed_cache: # Embedding is already cached, no need to re-calculate
+            print("Using cached prior embedding for prompt:", prompt)
+            return self.prior_embed_cache[prompt]
+        else:
+            print(f"Initializing deep image prior net...")
+            tokenized_text = clip.tokenize(prompt).to(DEVICE)
+            prior_embed = self.prior.sample(
+                tokenized_text,
+                num_samples_per_batch=num_samples_per_batch,
+                cond_scale=cond_scale,
+            )
+            self.prior_embed_cache[prompt] = prior_embed
+            return prior_embed
+
         
+    @torch.cuda.amp.autocast()
     def predict(
         self,
         prompt: str = Input(description="Prompt to generate", default=""),
@@ -77,16 +97,6 @@ class Predictor(BasePredictor):
         ),
         num_scales: int = Input(
             description="Number of scales", ge=1, le=10, default=6
-        ),
-        size_x: int = Input(
-            description="Resolution of input image",
-            default=256,
-            choices=[64, 128, 256, 512],
-        ),
-        size_y: int = Input(
-            description="Resolution of input image",
-            default=256,
-            choices=[64, 128, 256, 512],
         ),
         input_noise_strength: float = Input(
             description="Strength of input noise", ge=0, le=1, default=0.0
@@ -113,28 +123,31 @@ class Predictor(BasePredictor):
             description="Number of samples per batch", ge=1, le=10, default=2
         ),
         num_cutouts: int = Input(
-            description="Number of cutouts", ge=8, le=64, default=16
+            description="Number of cutouts", ge=4, le=32, default=8
         ),
-        cond_scale: float = Input(
+        guidance_scale: float = Input(
             description="Scale of conditioning", ge=0, le=10, default=1.0
         ),
         seed: int = Input(
             description="Random seed", ge=-1, le=100000, default=-1
         ),
-    ) -> List[Path]:
+    ) -> Iterator[Path]:
         """Run a single prediction on the model"""
+
         make_cutouts = MakeCutouts(
             self.clip_size,
             num_cutouts,
         )
+        target_embed = self.encode_and_cache_prior_embed(
+            prompt, num_samples_per_batch, guidance_scale
+        )
         for image in tqdm(predict(
-            self.prior,
             self.clip_model,
             make_cutouts,
-            prompt=prompt,
+            target_embed=target_embed,
             offset_type=offset_type,
             num_scales=num_scales,
-            size=(size_x, size_y),
+            size=(256, 256), # TODO - make this a parameter
             input_noise_strength=input_noise_strength,
             lr=lr,
             offset_lr_fac=offset_lr_fac,
@@ -143,7 +156,7 @@ class Predictor(BasePredictor):
             display_freq=display_freq,
             iterations=iterations,
             num_samples_per_batch=num_samples_per_batch,
-            cond_scale=cond_scale,
+            cond_scale=guidance_scale,
             seed=seed,
         )):
             yield Path(image)

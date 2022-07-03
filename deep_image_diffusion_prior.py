@@ -1,3 +1,4 @@
+from functools import lru_cache
 from typing import List
 import os
 import gc
@@ -28,12 +29,18 @@ INPUT_DEPTH = 32
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 OPTIMIZER_TYPE = "MADGRAD"
 
+# prior: DiffusionPrior,
+# return prior.sample(
+#     tokenized_text,
+#     num_samples_per_batch=num_samples_per_batch,
+#     cond_scale=cond_scale,
+# )
+# prompt: str = "",
 
 def predict(
-    prior: DiffusionPrior,
     clip_model: OpenAIClipAdapter,
     make_cutouts: MakeCutouts,
-    prompt: str = "",
+    target_embed: torch.Tensor = None,
     offset_type: str = "none",
     num_scales: int = 6,
     size: List[int] = [256, 256],
@@ -50,36 +57,25 @@ def predict(
 ) -> "List[str]":
     print("Using device:", DEVICE)
 
-    if seed == -1:
-        seed = random.randint(0, 100000) * random.randint(0, 1000)
-    print("Seed:", seed)
-    torch.manual_seed(seed)
-
-    print(f"Initializing deep image prior net...")
     dip_net = load_dip(
         input_depth=INPUT_DEPTH,
         num_scales=num_scales,
         offset_type=offset_type,
         device=DEVICE,
     )
-
     sideX, sideY = size  # Resolution
 
-    itt = 0
+    # Seed
+    if seed == -1:
+        seed = random.randint(0, 100000) * random.randint(0, 1000)
+    print("Seed:", seed)
+    torch.manual_seed(seed)
 
-    # Initialize input noise
+    # Constants
     input_scale = 0.1
     net_input = torch.randn([1, INPUT_DEPTH, sideY, sideX], device=DEVICE)
-
-    tokenized_text = clip.tokenize(prompt).to(DEVICE)
     noise = torch.randn((1, 512))
-    t = torch.linspace(1, 0, 1000 + 1)[:-1]
-
-    target_embed = prior.sample(
-        tokenized_text,
-        num_samples_per_batch=num_samples_per_batch,
-        cond_scale=cond_scale,
-    )
+    # t = torch.linspace(1, 0, 1000 + 1)[:-1]
 
     prompts = [Prompt(target_embed)]
 
@@ -95,6 +91,7 @@ def predict(
     scaler = torch.cuda.amp.GradScaler()
     image = None
     try:
+        itt = 0
         for _ in trange(iterations, leave=True, position=0):
             opt.zero_grad(set_to_none=True)
 
